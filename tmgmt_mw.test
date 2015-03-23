@@ -1,0 +1,147 @@
+<?php
+/**
+ * Drupal Plugin - Tests
+ *
+ * PHP version 5.3
+ *
+ * @category Plugins
+ * @package  Drupal
+ * @author   Oytun Tez <oytun@motaword.com>
+ */
+
+/**
+ * Class TMGMTMWTestCase
+ */
+class TMGMTMWTestCase extends TMGMTBaseTestCase {
+  /**
+   * @var TMGMTTranslator $translator
+   */
+  protected $translator;
+  protected $wrongApiId;
+  protected $wrongApiSecret;
+  protected $correctApiId = '1341c41ba75c5172';
+  protected $correctApiSecret = '575e2057355967f0750e21b9e131d724';
+
+  /**
+   * @return array
+   */
+  static function getInfo() {
+    return array(
+      'name' => t('MotaWord translator tests'),
+      'description' => t('Tests the MotaWord plugin for TMGMT module.'),
+      'group' => t('Translation Management'),
+    );
+  }
+
+  function setUp() {
+    parent::setUp(array('tmgmt_mw', 'tmgmt_ui'));
+    //$this->loginAsAdmin();
+    $this->translator = tmgmt_translator_load('mw');
+    $this->translator->settings['use_sandbox'] = true;
+    $this->setEnvironment('de');
+  }
+
+  function testMotaWord() {
+    // Create a job.
+    $job = $this->createJob();
+    $job->translator = $this->translator->name;
+
+    // Add a new item.
+    $item = $job->addItem('test_source', 'test', '1');
+    $item->data = array(
+      'wrapper' => array(
+        '#text' => 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+        '#label' => 'My Lorem Text',
+      ),
+    );
+    $item->save();
+
+    // Should be false. No API keys available yet.
+    $this->assertFalse($job->isTranslatable());
+
+    // Save a wrong api key.
+    $this->translator->settings['api_client_id'] = $this->wrongApiId;
+    $this->translator->settings['api_client_secret'] = $this->wrongApiSecret;
+    $this->translator->save();
+
+    $languages = $job->getTranslator()->getSupportedTargetLanguages('en');
+    $this->assertTrue(isset($languages['de']));
+    $this->assertTrue(isset($languages['es']));
+    $this->assertTrue(isset($languages['it']));
+    $this->assertFalse(isset($languages['en']));
+
+    // Api key is not entered.
+    $this->assertFalse($job->isTranslatable(), 'Job is not translatable.');
+    $this->assertFalse($job->requestTranslation(), 'Translation request was denied.');
+
+    $this->assertFalse($job->isActive(), 'Translation is not active.');
+
+    // Put correct API key and secret.
+    $job->getTranslator()->settings['api_client_id'] = $this->correctApiId;
+    $job->getTranslator()->settings['api_client_secret'] = $this->correctApiSecret;
+    $job->getTranslator()->save();
+
+    $this->assertTrue($job->isTranslatable(), 'Job is translatable.');
+
+    // No style guides or glossaries sent with the request.
+    $this->assertEqual(NULL, $job->requestTranslation(), 'Translation request was successful.');
+    $this->assertNotNull($job->reference, 'Project ID: '.$job->reference);
+
+    $this->assertTrue($job->isActive());
+
+    foreach ($job->getItems() as $item) {
+      $this->assertTrue($item->isActive());
+    }
+
+    // Translation callback.
+    $callbackData = array(
+      'type' => 'project',
+      'action' => 'translated',
+      'project' => array(
+        // Project representation from the API call is missing here. We will only use
+        // what is necessary, which is the custom data.
+        'custom' => array(
+          'job_id' => $job->tjid
+        )
+      )
+    );
+
+    $action = str_replace(':8080', '', url('tmgmt_mw_callback', array('absolute' => TRUE)));
+    $out = $this->curlExec(array(CURLOPT_URL => $action, CURLOPT_POST => TRUE, CURLOPT_POSTFIELDS => http_build_query($callbackData)));
+
+    // Response should be empty if everything went ok.
+    $this->assertResponse(200);
+    $this->assertEqual($out, 'translated');
+
+    $this->assertTrue($job->tjid > 0, 'Job ID: '.$job->tjid);
+
+    // Proofreading callback.
+    $callbackData = array(
+      'type' => 'project',
+      'action' => 'proofread',
+      'project' => array(
+        // Project representation from the API call is missing here. We will only use
+        // what is necessary, which is the custom data.
+        'custom' => array(
+          'job_id' => $job->tjid
+        )
+      )
+    );
+
+    $action = str_replace(':8080', '', url('tmgmt_mw_callback', array('absolute' => TRUE)));
+    $out = $this->curlExec(array(CURLOPT_URL => $action, CURLOPT_POST => TRUE, CURLOPT_POSTFIELDS => http_build_query($callbackData)));
+
+    // Response should be empty if everything went ok.
+    $this->assertResponse(200);
+    $this->assertEqual($out, 'proofread');
+
+    // Clear job item caches.
+    entity_get_controller('tmgmt_job_item')->resetCache();
+
+    $items = $job->getItems();
+    $item = end($items);
+    $data = $item->getData();
+    $this->assertEqual('Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.', $data['wrapper']['#translation']['#text']);
+
+  }
+}
