@@ -33,6 +33,9 @@ class TMGMTMWTestCase extends TMGMTBaseTestCase {
     );
   }
 
+  /**
+   * Setup the test.
+   */
   function setUp() {
     parent::setUp(array('tmgmt_mw', 'tmgmt_ui'));
     //$this->loginAsAdmin();
@@ -41,6 +44,13 @@ class TMGMTMWTestCase extends TMGMTBaseTestCase {
     $this->setEnvironment('de');
   }
 
+  /**
+   * Test MotaWord-related flow.
+   *
+   * @todo Extend the tests to cover more cases.
+   *
+   * @throws \TMGMTException
+   */
   function testMotaWord() {
     // Create a job.
     $job = $this->createJob();

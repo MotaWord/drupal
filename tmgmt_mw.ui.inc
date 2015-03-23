@@ -10,8 +10,7 @@
  */
 
 /**
- * @file
- * Provides myGengo translation plugin controller.
+ * Class TMGMTMWTranslatorUIController
  */
 class TMGMTMWTranslatorUIController extends TMGMTDefaultTranslatorUIController {
   /**
@@ -20,6 +19,8 @@ class TMGMTMWTranslatorUIController extends TMGMTDefaultTranslatorUIController {
   protected $api;
 
   /**
+   * Plugin settings, presented under Modules > TMGMT MW > Configure.
+   *
    * @param                  $form
    * @param                  $form_state
    * @param \TMGMTTranslator $translator
@@ -58,6 +59,16 @@ class TMGMTMWTranslatorUIController extends TMGMTDefaultTranslatorUIController {
     return parent::pluginSettingsForm($form, $form_state, $translator, $busy);
   }
 
+  /**
+   * Last settings before starting the project. Presented after clicking "Send to translator".
+   * Creates a quote, shows its details and asks for style guide and glossary (not available yet).
+   *
+   * @param           $settings
+   * @param           $form_state
+   * @param \TMGMTJob $job
+   *
+   * @return mixed
+   */
   public function checkoutSettingsForm($settings, &$form_state, TMGMTJob $job) {
     $settings['quote'] = array(
       '#type' => 'fieldset',
@@ -94,7 +105,7 @@ class TMGMTMWTranslatorUIController extends TMGMTDefaultTranslatorUIController {
       '#markup' => format_date($quote->delivery_at, "long"),
     );
 
-    $settings['additionals'] = array(
+    /*$settings['additionals'] = array(
       '#type' => 'fieldset',
       '#title' => t('Additional Documents'),
     );
@@ -111,14 +122,14 @@ class TMGMTMWTranslatorUIController extends TMGMTDefaultTranslatorUIController {
       '#title' => t('Glossary (optional)'),
       '#size' => 50,
       '#description' => t('Supported formats: .TBX and .XLSX'),
-    );
-
-    $settings['payment'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('Payment'),
-    );
+    );*/
 
     if (!isset($quote->allow_invoicing) || !$quote->allow_invoicing) {
+      $settings['payment'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Payment'),
+      );
+
       $settings['payment']['note'] = array(
         '#type' => 'item',
         '#markup' => '<span style="color: green;">Once you submit, we will charge your card on file.</span>',
@@ -128,6 +139,13 @@ class TMGMTMWTranslatorUIController extends TMGMTDefaultTranslatorUIController {
     return $settings;
   }
 
+  /**
+   * Creates a project with the documents.
+   *
+   * @param \TMGMTJob $job
+   *
+   * @return bool|object
+   */
   public function getQuote(TMGMTJob $job) {
     /** @var TMGMTMWPluginController $controller */
     $controller = $job->getTranslatorController();
@@ -135,7 +153,7 @@ class TMGMTMWTranslatorUIController extends TMGMTDefaultTranslatorUIController {
     try {
       return $controller->getQuote($job);
     } catch(TMGMTException $e) {
-      watchdog_exception('tmgmt_mygengo', $e);
+      watchdog_exception('tmgmt_mw', $e);
       drupal_set_message($e->getMessage(), 'error');
 
       return false;
@@ -143,7 +161,11 @@ class TMGMTMWTranslatorUIController extends TMGMTDefaultTranslatorUIController {
   }
 
   /**
-   * {@inheritdoc}
+   * Project details after project submission.
+   *
+   * @param \TMGMTJob $job
+   *
+   * @return array
    */
   public function checkoutInfo(TMGMTJob $job) {
     if (!$job->reference) {
@@ -237,6 +259,13 @@ class TMGMTMWTranslatorUIController extends TMGMTDefaultTranslatorUIController {
     return $form;
   }
 
+  /**
+   * Return MotaWord API instance.
+   *
+   * @param \TMGMTTranslator $translator
+   *
+   * @return \TMGMTMotaWordAPI
+   */
   protected function getApi(TMGMTTranslator $translator) {
     if (!$this->api) {
       $this->api = new TMGMTMotaWordAPI($translator);

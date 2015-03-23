@@ -31,73 +31,18 @@ class TMGMTMotaWordAPI {
    */
   const API_VERSION = 'v0';
 
-  private $useSandbox = FALSE;
-  private $clientId;
-  private $clientSecret;
   /**
-   * @var Array
+   * @var bool
    */
-  private $supportedLanguages = array(
-    'sq' => 'sq-al',
-    'ar' => 'ar-sa',
-    'bn' => 'bn-bd',
-    'bs' => 'bs-ba',
-    'bg' => 'bg-bg',
-    'ca' => 'ca-es',
-    // '' => 'zh-cn-yue',
-    'zn-hans' => 'zh-cn-cmn-s',
-    'zn-hant' => 'zh-cn-cmn-t',
-    'hr' => 'hr-hr',
-    'cs' => 'cs-cz',
-    'da' => 'da-dk',
-    'fa' => 'fa-af',
-    'nl' => 'nl-nl',
-    'en-gb' => 'en-uk',
-    'en' => 'en-us',
-    'et' => 'et-ee',
-    // '' => 'fa-ir',
-    'fi' => 'fi-fi',
-    'fr' => 'fr-fr',
-    // '' => 'fr-ca',
-    'ka' => 'ka-ge',
-    'de' => 'de-de',
-    'el' => 'el-gr',
-    'he' => 'he-il',
-    'hi' => 'hi-in',
-    'hu' => 'hu-hu',
-    'id' => 'id-id',
-    'it' => 'it-it',
-    'jp' => 'jp-jp',
-    'kk' => 'kk-kz',
-    // '' => 'km-kh',
-    'ko' => 'ko-kp',
-    'lo' => 'lo-la',
-    'lv' => 'lv-lv',
-    'lt' => 'lt-lt',
-    'mk' => 'mk-mk',
-    'ms' => 'ms-my',
-    'nb' => 'no-no',
-    'ps' => 'ps',
-    'pl' => 'pl-pl',
-    'pt-br' => 'pt-br',
-    'pt-pt' => 'pt-pt',
-    'ro' => 'ro-ro',
-    'ru' => 'ru-ru',
-    'sr' => 'sr-rs',
-    'sk' => 'sk-sk',
-    'sl' => 'sl-si',
-    'es' => 'es-es',
-    // '' => 'es-ar',
-    'sv' => 'sv-se',
-    'tl' => 'tl-ph',
-    'ta' => 'ta-in',
-    'th' => 'th-th',
-    'tr' => 'tr-tr',
-    'uk' => 'uk-ua',
-    'ur' => 'ur',
-    'uz' => 'uz-uz',
-    'vi' => 'vi-vn',
-  );
+  private $useSandbox = FALSE;
+  /**
+   * @var string
+   */
+  private $clientId;
+  /**
+   * @var string
+   */
+  private $clientSecret;
 
   /**
    * Construct the API
@@ -118,18 +63,6 @@ class TMGMTMotaWordAPI {
    */
   public function getLanguages() {
     return $this->get('languages');
-  }
-
-  /**
-   * Returns array of supported languages by MW service.
-   *
-   * @return array
-   *   Returns array of the supported languages.
-   *   The key is drupal-style language code,
-   *   the value - MW-style language code.
-   */
-  public function getSupportedLanguages() {
-    return $this->supportedLanguages;
   }
 
   /**
@@ -181,6 +114,14 @@ class TMGMTMotaWordAPI {
     return $response;
   }
 
+  /**
+   * Launch a project
+   *
+   * @param integer $projectId
+   * @param array   $data
+   *
+   * @return object
+   */
   public function launchProject($projectId, $data = array()) {
     return $this->post('projects/' . $projectId . '/launch', $data, TRUE);
   }
@@ -307,6 +248,13 @@ class TMGMTMotaWordAPI {
     return $response;
   }
 
+  /**
+   * Prepare data to be sent via an HTTP request.
+   *
+   * @param array $data
+   *
+   * @return array
+   */
   function prepareData($data) {
     $result = array();
 
@@ -329,6 +277,14 @@ class TMGMTMotaWordAPI {
     return $result;
   }
 
+  /**
+   * Encode post body.
+   *
+   * @param $boundary
+   * @param $params
+   *
+   * @return string
+   */
   function multipart_encode($boundary, $params) {
     $output = "";
     foreach ($params as $key => $value) {
@@ -346,10 +302,26 @@ class TMGMTMotaWordAPI {
     return $output;
   }
 
+  /**
+   * Regular form body.
+   *
+   * @param string $name   Form input name
+   * @param string $value  Form input value
+   *
+   * @return string
+   */
   function multipart_enc_text($name, $value) {
     return "Content-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n";
   }
 
+  /**
+   * File upload form body.
+   *
+   * @param string $key    Form input name
+   * @param string $path   File path
+   *
+   * @return string
+   */
   function multipart_enc_file($key, $path) {
     if (substr($path, 0, 1) == "@") {
       $path = substr($path, 1);
@@ -372,9 +344,21 @@ class TMGMTMotaWordAPI {
     return $data;
   }
 
+  /**
+   * Get a new access token. Once we retrieve one, we store it in the session for a while ('expires' result)
+   * to prevent unnecessary calls.
+   *
+   * @param bool $forceNew    When true, we'll retrieve a new access token even though the previous one was not
+   *                          expired yet.
+   *
+   * @return mixed
+   * @throws \TMGMTException
+   */
   protected function getAccessToken($forceNew = FALSE) {
-    if ($forceNew === FALSE && isset($_SESSION['mw_access_token']) && isset($_SESSION['mw_access_token_expiration']) && time(
-      ) < (int) $_SESSION['mw_access_token_expiration']
+    if ($forceNew === FALSE
+      && isset($_SESSION['mw_access_token'])
+      && isset($_SESSION['mw_access_token_expiration'])
+      && time() < (int) $_SESSION['mw_access_token_expiration']
     ) {
       return $_SESSION['mw_access_token'];
     }
@@ -433,6 +417,13 @@ class TMGMTMotaWordAPI {
     }
   }
 
+  /**
+   * Convert error object returned from MW API response to string.
+   *
+   * @param \stdClass $response
+   *
+   * @return bool|null|string
+   */
   protected function flattenError(stdClass $response) {
     $result = NULL;
 

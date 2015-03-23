@@ -14,6 +14,9 @@
  */
 class TMGMTMWPluginController extends TMGMTDefaultTranslatorPluginController {
 
+  /**
+   * @var array       [Drupal code => MotaWord code]
+   */
   protected $supportedLanguages = array(
     'af' => 'af',
     'ak' => 'ak',
@@ -233,6 +236,13 @@ class TMGMTMWPluginController extends TMGMTDefaultTranslatorPluginController {
     return true;
   }
 
+  /**
+   * Get a quote (create a project) via the API.
+   *
+   * @param \TMGMTJob $job
+   *
+   * @return bool|object
+   */
   public function getQuote(TMGMTJob $job) {
     if(!$job->isTranslatable()) {
       $job->rejected('Your job has been rejected. Contact us at info@motaword.com');
