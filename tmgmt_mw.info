@@ -1,5 +1,5 @@
 name = MotaWord translator
-description = MotaWord service plugin for TMGMT. Sign up at <a href="https://developer.motaword.com">motaword.com</a>!
+description = MotaWord translator plugin for TMGMT module. For details, visit <a href="https://developer.motaword.com">developer.motaword.com</a>!
 package = Translation Management
 core = 7.x
 dependencies[] = tmgmt

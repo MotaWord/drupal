@@ -22,7 +22,7 @@ class TMGMTMotaWordAPI {
   /**
    * Base API URL for sandbox mode
    */
-  const SANDBOX_URL = 'http://api.box';
+  const SANDBOX_URL = 'https://sandbox.motaword.com';
 
   /**
    * Current API version

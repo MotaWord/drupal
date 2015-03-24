@@ -19,8 +19,8 @@ class TMGMTMWTestCase extends TMGMTBaseTestCase {
   protected $translator;
   protected $wrongApiId;
   protected $wrongApiSecret;
-  protected $correctApiId = '1341c41ba75c5172';
-  protected $correctApiSecret = '575e2057355967f0750e21b9e131d724';
+  protected $correctApiId = '92167cfed976d698';
+  protected $correctApiSecret = 'df10694766f4182c9d7e92726f9a6570';
 
   /**
    * @return array
@@ -41,6 +41,7 @@ class TMGMTMWTestCase extends TMGMTBaseTestCase {
     //$this->loginAsAdmin();
     $this->translator = tmgmt_translator_load('mw');
     $this->translator->settings['use_sandbox'] = true;
+
     $this->setEnvironment('de');
   }
 
