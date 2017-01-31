@@ -1,0 +1,12 @@
+tmgmt.translator.settings.mw:
+  type: tmgmt.translator_base
+  mapping:
+    api_client_id:
+      type: string
+      label: MW API Client ID
+    api_client_secret:
+      type: string
+      label: MW API Client Secret Key
+    use_sandbox:
+      type: boolean
+      label: Use the sandbox

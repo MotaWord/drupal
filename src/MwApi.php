@@ -2,17 +2,25 @@
 /**
  * Drupal Plugin - API
  *
- * PHP version 5.3
+ * PHP version 5.6
  *
  * @category Plugins
  * @package  Drupal
  * @author   Oytun Tez <oytun@motaword.com>
  */
 
+namespace Drupal\tmgmt_mw;
+
+use Drupal\Core\Url;
+use Drupal\tmgmt\TMGMTException;
+use Drupal\tmgmt\TranslatorInterface;
+use GuzzleHttp\ClientInterface;
+use Psr\Http\Message\ResponseInterface;
+
 /**
- * Class TMGMTMotaWordAPI
+ * Class MwApi
  */
-class TMGMTMotaWordAPI {
+class MwApi {
 
   /**
    * Base API URL
@@ -43,17 +51,27 @@ class TMGMTMotaWordAPI {
    * @var string
    */
   private $clientSecret;
-
   /**
-   * Construct the API
-   *
-   * @param TMGMTTranslator $translator Translator which has the connection
-   *                                    settings.
+   * @var \GuzzleHttp\ClientInterface
    */
-  function __construct(TMGMTTranslator $translator) {
+  private $http;
+
+    /**
+     * Construct the API
+     *
+     * @param TranslatorInterface         $translator Translator which has the connection
+     *                                                settings.
+     * @param \GuzzleHttp\ClientInterface $httpClient
+     */
+  function __construct(TranslatorInterface $translator, ClientInterface $httpClient = null) {
     $this->useSandbox = $translator->getSetting('use_sandbox');
     $this->clientId = $translator->getSetting('api_client_id');
     $this->clientSecret = $translator->getSetting('api_client_secret');
+
+    \Drupal::logger('tmgmt_mw')->error($this->clientId);
+    \Drupal::logger('tmgmt_mw')->error($this->clientSecret);
+
+    $this->http = $httpClient;
   }
 
   /**
@@ -85,6 +103,15 @@ class TMGMTMotaWordAPI {
    */
   public function getProgress($projectId) {
     return $this->get('projects/' . $projectId . '/progress');
+  }
+
+  /**
+   * Gets MW account details for the authenticated user.
+   *
+   * @return object
+   */
+  public function getAccount() {
+    return $this->get('me');
   }
 
   /**
@@ -186,8 +213,7 @@ class TMGMTMotaWordAPI {
         'User-Agent' => $this->getUserAgent(),
         'Accept' => 'application/json'
       ),
-      'timeout' => 99999999,
-      'method' => $method,
+      'timeout' => 99999999
     );
 
     if ($this->useSandbox) {
@@ -197,45 +223,32 @@ class TMGMTMotaWordAPI {
       $url = self::PRODUCTION_URL . '/' . self::API_VERSION . '/' . $path;
     }
 
-    if ($method == 'GET' || $method == 'DELETE') {
-      $query = array_merge(
-        array('access_token' => $this->getAccessToken()),
-        $data
-      );
+    $query = array('access_token' => $this->getAccessToken());
 
-      $url = url($url, array('query' => $query, 'absolute' => TRUE));
-      $response = drupal_http_request($url, $options);
-    }
-    else {
+    $url = Url::fromUri($url, array('query' => $query))->setAbsolute()->toString();
+
+    if($method !== 'GET' && $method !== 'DELETE') {
       if ($upload === TRUE) {
         $boundary = uniqid();
         $options['headers']['Content-Type'] = "multipart/form-data; boundary=$boundary";
-        $options['data'] = $this->multipart_encode($boundary, $data);
-      }
-      else {
+        $options['body'] = $this->multipart_encode($boundary, $data);
+      } else {
         $options['headers']['Content-Type'] = 'application/x-www-form-urlencoded';
-        $options['data'] = http_build_query($data);
+        $options['body'] = http_build_query($data);
       }
-
-      $url = url(
-        $url,
-        array(
-          'query' => array('access_token' => $this->getAccessToken()),
-          'absolute' => TRUE
-        )
-      );
-
-      $response = drupal_http_request($url, $options);
     }
 
-    if ($response->code != 200 && $response->code != 201) {
+    $response = $this->http->request($method, $url, $options);
+    //$response = \GuzzleHttp\json_decode($response->getBody());
+
+    if ($response->getStatusCode() !== 200 && $response->getStatusCode() !== 201) {
       throw new TMGMTException(
         'There was an error with your MotaWord request: @error',
         array('@error' => $this->flattenError($response), '@url' => $url)
       );
     }
 
-    $response = json_decode($response->data);
+    $response = json_decode($response->getBody());
 
     // Find if we have only one error or multiple.
     if (isset($response->error) || isset($response->errors)) {
@@ -336,10 +349,10 @@ class TMGMTMotaWordAPI {
       $path = $path[0];
     }
 
-    $mimetype = "application/octet-stream";
+    $mimeType = "application/octet-stream";
     $data = "Content-Disposition: form-data; name=\"" . $key . "\"; filename=\"$fileName\"\r\n";
     $data .= "Content-Transfer-Encoding: binary\r\n";
-    $data .= "Content-Type: $mimetype\r\n\r\n";
+    $data .= "Content-Type: $mimeType\r\n\r\n";
     $data .= file_get_contents($path) . "\r\n";
     return $data;
   }
@@ -351,13 +364,15 @@ class TMGMTMotaWordAPI {
    * @param bool $forceNew    When true, we'll retrieve a new access token even though the previous one was not
    *                          expired yet.
    *
-   * @return mixed
-   * @throws \TMGMTException
+   * @return string
+   * @throws TMGMTException
    */
   protected function getAccessToken($forceNew = FALSE) {
     if ($forceNew === FALSE
       && isset($_SESSION['mw_access_token'])
       && isset($_SESSION['mw_access_token_expiration'])
+      && isset($_SESSION['mw_client_id'])
+      && $_SESSION['mw_client_id'] === $this->clientId
       && time() < (int) $_SESSION['mw_access_token_expiration']
     ) {
       return $_SESSION['mw_access_token'];
@@ -367,13 +382,9 @@ class TMGMTMotaWordAPI {
       'headers' => array(
         'User-Agent' => $this->getUserAgent(),
         'Accept' => 'application/json',
-        'Authorization' => 'Basic ' . base64_encode(
-            $this->clientId . ':' . $this->clientSecret
-          ),
-        'Content-Type' => 'application/x-www-form-urlencoded'
       ),
-      'data' => http_build_query(array('grant_type' => 'client_credentials')),
-      'method' => 'POST'
+      'json' => array('grant_type' => 'client_credentials'),
+      'auth' => [$this->clientId, $this->clientSecret]
     );
 
     if ($this->useSandbox) {
@@ -383,51 +394,41 @@ class TMGMTMotaWordAPI {
       $url = self::PRODUCTION_URL . '/' . self::API_VERSION . '/token';
     }
 
-    $url = url(
-      $url,
-      array(
-        'query' => array('grant_type' => 'client_credentials'),
-        'absolute' => TRUE
-      )
-    );
+    $url = Url::fromUri($url, array('query' => array('grant_type' => 'client_credentials')))->setAbsolute()->toString();
+    $response = $this->http->request('POST', $url, $options);
 
-    $response = drupal_http_request($url, $options);
+    if ($response->getStatusCode() !== 200) {
+      \Drupal::logger('tmgmt_mw')->error($this->flattenError($response));
 
-    if (isset($response->error) || $response->code != 200) {
-      throw new TMGMTException(
-        'Can\'t connect to MotaWord due to following error: @error at "@url"',
-        array('@error' => $this->flattenError($response), '@url' => $url)
-      );
+      return null;
     }
 
+    $response = json_decode($response->getBody());
 
-    $response = json_decode($response->data);
+    if (isset($response->error) || !isset($response->access_token)) {
+      \Drupal::logger('tmgmt_mw')->error($this->flattenError($response));
 
-    if (isset($response->access_token)) {
-      $_SESSION['mw_access_token'] = $response->access_token;
-      $_SESSION['mw_access_token_expiration'] = time() + $response->expires_in;
-
-      return $response->access_token;
+      return null;
     }
-    else {
-      throw new TMGMTException(
-        'There was a problem retrieving your access token: @error',
-        array('@error' => $this->flattenError($response))
-      );
-    }
+
+    $_SESSION['mw_client_id'] = $this->clientId;
+    $_SESSION['mw_access_token'] = $response->access_token;
+    $_SESSION['mw_access_token_expiration'] = time() + $response->expires_in;
+
+    return $response->access_token;
   }
 
   /**
    * Convert error object returned from MW API response to string.
    *
-   * @param \stdClass $response
+   * @param ResponseInterface $response
    *
    * @return bool|null|string
    */
-  protected function flattenError(stdClass $response) {
+  protected function flattenError(ResponseInterface $response) {
     $result = NULL;
 
-    $response = json_decode($response->data);
+    $response = json_decode($response->getBody());
 
     if (!$response) {
       if (is_object($response) && property_exists($response, 'error')) {

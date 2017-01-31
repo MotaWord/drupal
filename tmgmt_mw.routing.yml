@@ -1,0 +1,7 @@
+tmgmt_mw.callback:
+  path: /tmgmt_mw_callback
+  defaults:
+    _title: 'TMGMT MW Callback'
+    _controller: '\Drupal\tmgmt_mw\Controller\MwController::callback'
+  requirements:
+    _access: 'TRUE'
