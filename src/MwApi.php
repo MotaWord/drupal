@@ -6,7 +6,7 @@
  *
  * @category Plugins
  * @package  Drupal
- * @author   Oytun Tez <oytun@motaword.com>
+ * @author   MotaWord Engineering <it@motaword.com>
  */
 
 namespace Drupal\tmgmt_mw;
@@ -134,8 +134,8 @@ class MwApi {
    */
   public function downloadProject($projectId) {
     $response = $this->post(
-      'projects/' . $projectId . '/package',
-      array('async' => FALSE)
+      'projects/' . $projectId . '/package?async=0',
+      array(), FALSE, array('Accept' => '*/*')
     );
 
     return $response;
@@ -174,8 +174,8 @@ class MwApi {
    *
    * @return object
    */
-  protected function post($path, $data = array(), $upload = FALSE) {
-    return $this->request($path, 'POST', $data, $upload);
+  protected function post($path, $data = array(), $upload = FALSE, $headers = array()) {
+    return $this->request($path, 'POST', $data, $upload, $headers);
   }
 
   /**
@@ -190,18 +190,20 @@ class MwApi {
     return $this->request($path, 'PUT', $data);
   }
 
-  /**
-   * HTTP request base
-   *
-   * @param string  $path   Relative API resource path
-   * @param string  $method HTTP method: GET, POST, PUT, DELETE
-   * @param array   $data   Request parameters
-   * @param boolean $upload Is this a file upload?
-   *
-   * @return object
-   * @throws TMGMTException
-   */
-  protected function request($path, $method, $data = array(), $upload = FALSE) {
+    /**
+     * HTTP request base
+     *
+     * @param string $path Relative API resource path
+     * @param string $method HTTP method: GET, POST, PUT, DELETE
+     * @param array $data Request parameters
+     * @param boolean $upload Is this a file upload?
+     *
+     * @param array $headers        headers to override
+     * @return object|string      May return binary string for translated package response
+     * @throws TMGMTException
+     * @throws \GuzzleHttp\Exception\GuzzleException
+     */
+  protected function request($path, $method, $data = array(), $upload = FALSE, $headers = array()) {
     $data = $this->prepareData($data);
 
     if (!isset($data['detailed'])) {
@@ -209,10 +211,10 @@ class MwApi {
     }
 
     $options = array(
-      'headers' => array(
+      'headers' => array_merge(array(
         'User-Agent' => $this->getUserAgent(),
         'Accept' => 'application/json'
-      ),
+      ), $headers),
       'timeout' => 99999999
     );
 
@@ -248,17 +250,21 @@ class MwApi {
       );
     }
 
-    $response = json_decode($response->getBody());
+    $responseString = $response->getBody()->getContents();
+    $result = json_decode($responseString);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        return $responseString;
+    }
 
     // Find if we have only one error or multiple.
-    if (isset($response->error) || isset($response->errors)) {
+    if (isset($result->error) || isset($result->errors)) {
       throw new TMGMTException(
         t('MotaWord returned an error: @error'),
-        array('@error' => $this->flattenError($response))
+        array('@error' => $this->flattenError($result))
       );
     }
 
-    return $response;
+    return $result;
   }
 
   /**
@@ -375,6 +381,7 @@ class MwApi {
       && $_SESSION['mw_client_id'] === $this->clientId
       && time() < (int) $_SESSION['mw_access_token_expiration']
     ) {
+      \Drupal::logger('tmgmt_mw')->debug(t('Using existing access token.'));
       return $_SESSION['mw_access_token'];
     }
 
@@ -473,13 +480,13 @@ class MwApi {
   protected function getUserAgent() {
     global $base_url;
 
-    $info = system_get_info('module', 'tmgmt');
+    $info = \Drupal::service('extension.list.module')->getExtensionInfo('tmgmt');
     $tmgmt_version = !empty($info['version']) ? $info['version']
-      : $info['core'] . '-1.x-dev';
+      : (isset($info['core']) ? $info['core'] : '') . '-1.x-dev';
 
-    $info = system_get_info('module', 'tmgmt_mw');
+    $info = \Drupal::service('extension.list.module')->getExtensionInfo('tmgmt_mw');
     $mw_version = !empty($info['version']) ? $info['version']
-      : $info['core'] . '-1.x-dev';
+      : (isset($info['core']) ? $info['core'] : '') . '-1.x-dev';
 
     return 'Drupal TMGMT/' . $tmgmt_version . '; MotaWord/' . $mw_version . '; ' . $base_url;
   }

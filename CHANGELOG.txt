@@ -1,3 +1,31 @@
 TMGMT - MotaWord Translator 7.x-1.0-beta1, 2015-03-23
 -----------------------
 - Everything is new here. This is the first beta version of MotaWord translation plugin for TMGMT module for Drupal 7.
+
+
+TMGMT - MotaWord Translator 10.0.0, 2021-02-05
+-----------------------
+- Refactored code base to support Drupal 8.x and 9.x
+- Migrated to semantic versioning, so no more "8.x-9.x" prefix in release names.
+
+
+TMGMT - MotaWord Translator 10.0.1, 2021-04-15
+-----------------------
+- Changelog, readme updates.
+
+
+TMGMT - MotaWord Translator 11.0.0, 2021-04-15
+-----------------------
+This is a major update to support more complex workflows and larger websites.
+
+- The module now provides an option to process each post/page as a separate source file at MotaWord
+- MotaWord translation projects with multiple source files are delivered to Drupal as a ZIP file. The module now handles ZIP package delivery.
+
+
+TMGMT - MotaWord Translator 11.0.1, 2021-04-15
+-----------------------
+Fixed JSON decoding issue.
+
+TMGMT - MotaWord Translator 11.0.2, 2021-05-03
+-----------------------
+Fixed punctuations in source file names.

@@ -54,7 +54,7 @@ class MwController extends ControllerBase {
     $job = Job::load($custom->job_id);
     if (!$job) {
       \Drupal::logger('tmgmt_mw')->error('Could not find job #%job_id', array('%job_id' => $custom->job_id));
-      throw new \InvalidArgumentException();
+      throw new \InvalidArgumentException(sprintf('Could not find job #%s', $custom->job_id));
     }
 
     /** @var MwTranslator $mw */
