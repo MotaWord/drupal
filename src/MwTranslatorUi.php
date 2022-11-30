@@ -63,7 +63,7 @@ class MwTranslatorUi extends TranslatorPluginUiBase {
     $settings['quote']['delivery'] = array(
       '#type' => 'item',
       '#title' => t('Delivery'),
-      '#markup' => format_date($quote->delivery_at, "long"),
+      '#markup' => \Drupal::service('date.formatter')->format($quote->delivery_at, "long"),
     );
 
     /** @todo Not implemented yet. */
@@ -155,6 +155,12 @@ class MwTranslatorUi extends TranslatorPluginUiBase {
       '#default_value' => $translator->getSetting('use_sandbox'),
       '#description' => t('Check to use the testing environment.'),
     );
+      $form['use_multiple_source_files'] = array(
+          '#type' => 'checkbox',
+          '#title' => t('Use separate files for each post/page'),
+          '#default_value' => $translator->getSetting('use_multiple_source_files'),
+          '#description' => t('Compile all pages in one source file, or use separate files for each page. Requires ZIP extension in your system.'),
+      );
     //$form += parent::addConnectButton();
 
     return $form;
@@ -179,6 +185,7 @@ class MwTranslatorUi extends TranslatorPluginUiBase {
     }
 
     if(!$account) {
+      \Drupal::logger('tmgmt_mw')->error(t('The "MW API Client ID" or "MW API Client Secret Key" is not valid.'));
       $form_state->setError($settings['api_client_secret'], t('The "MW API Client ID" or "MW API Client Secret Key" is not valid.'));
     }
   }
@@ -226,7 +233,7 @@ class MwTranslatorUi extends TranslatorPluginUiBase {
                 <strong>Price: </strong>' . $project->price->amount . strtoupper(
         $project->price->currency
       ) . '<br/><br/>
-                <a style="background: #3277D4; color: white; font-weight: bold; padding: 10px;" target="_blank" href="https://www.motaword.com/projects/' . $project->id . '">GO TO MOTAWORD DASHBOARD</a>
+                <a style="background: #3277D4; color: white; font-weight: bold; padding: 10px;" target="_blank" href="https://www.motaword.com/dashboard/projects/' . $project->id . '">GO TO MOTAWORD DASHBOARD</a>
             </p>
         ';
 

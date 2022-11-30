@@ -18,6 +18,7 @@ use Drupal\tmgmt_mw\MwApi;
 use GuzzleHttp\ClientInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
+use ZipArchive;
 
 /**
  * MW translation plugin controller.
@@ -277,18 +278,21 @@ class MwTranslator extends TranslatorPluginBase implements ContainerFactoryPlugi
 
     $data = array();
 
-    $tmpFile = tmpfile();
-    fwrite($tmpFile, $this->prepareDataForSending($job, $defaultType));
-
     $data['source_language'] = $languages[$job->getSourceLangcode()];
     $data['target_languages'] = array($languages[$job->getTargetLangcode()]);
     $data['callback_url'] = Url::fromRoute('tmgmt_mw.callback')->setAbsolute()->toString();
     $data['custom[job_id]'] = $job->id();
 
-    $metaData = stream_get_meta_data($tmpFile);
-    $data['documents'] = array(
-      '@' . $metaData['uri'] . ';filename=' . $job->id() . '.' . $defaultType
-    );
+      $files = $this->prepareDataForSending($job, $defaultType);
+      $apiDocuments = [];
+      foreach ($files as $fileName => $fileContent) {
+          $tmpFile = tempnam(\Drupal::service('file_system')->getTempDirectory(), 'mw_src_');
+          file_put_contents($tmpFile, $fileContent);
+          $apiDocuments[] = '@' . $tmpFile . ';filename=' . $fileName;
+      }
+      foreach ($apiDocuments as $i => $apiDocument) {
+          $data['documents['.$i.']'] = $apiDocument;
+      }
 
     $quote = $this->getApi($job->getTranslator())->submitProject($data);
 
@@ -317,7 +321,7 @@ class MwTranslator extends TranslatorPluginBase implements ContainerFactoryPlugi
 
   /**
    * Get the progress of a previously submitted project
-   * 
+   *
    * @param \Drupal\tmgmt\JobInterface $job
    *
    * @return null|object
@@ -342,48 +346,91 @@ class MwTranslator extends TranslatorPluginBase implements ContainerFactoryPlugi
     return $this->supportedLanguages;
   }
 
-  /**
-   * Prepares data to be send to MW service and returns XML string.
-   *
-   * @param JobInterface $job
-   * @param string   $type File format: json, xml
-   *
-   * @return string Data for sending to the translator service.
-   */
+    /**
+     * Prepares data to be send to MW service and returns XML string.
+     *
+     * @param JobInterface $job
+     * @param string $type File format: json, xml
+     *
+     * @return array Data for sending to the translator service. Key is the file name.
+     * @throws TMGMTException
+     */
   protected function prepareDataForSending(JobInterface $job, $type = 'json') {
-    /** @var \Drupal\tmgmt\Data $data_service */
-    $data_service = \Drupal::service('tmgmt.data');
+    if ($job->getTranslator()->getSetting('use_multiple_source_files')) {
+        $files = [];
+        foreach ($job->getData() as $key => $jobData) {
+            $fileBaseName = $key;
 
-    $data = array_filter($data_service->flatten($job->getData()), function($value) {
-      return !(empty($value['#text']) || (isset($value['#translate']) && $value['#translate'] === FALSE));
-    });
+            if (isset($jobData['title'][0]['value']['#text']) && !empty($jobData['title'][0]['value']['#text'])) {
+                $fileBaseName = $jobData['title'][0]['value']['#text'];
+            }
 
-    if ($type === 'json') {
-      $items = array();
+            $fileBaseName = preg_replace("#[[:punct:]]#", "", $fileBaseName);
+
+            $fileContent = $this->prepareSingleDataForSending($job, $type, $key);
+
+            if (isset($files[$fileBaseName])) {
+                $fileBaseName .= '-'.rand();
+            }
+
+            $fileBaseName .= '.' . $type;
+            $files[$fileBaseName] = $fileContent;
+        }
+
+        return $files;
+    } else {
+        return ['job-' . $job->id() . '.' . $type => $this->prepareSingleDataForSending($job, $type)];
     }
-    else {
-      $items = '';
-    }
+  }
 
-    foreach ($data as $key => $value) {
+  protected function prepareSingleDataForSending(JobInterface $job, $type = 'json', $keepOnlyThisIndex = null)
+  {
+      /** @var \Drupal\tmgmt\Data $data_service */
+      $data_service = \Drupal::service('tmgmt.data');
+
+      $data = array_filter($data_service->flatten($job->getData()), function($value) {
+          return !(empty($value['#text']) || (isset($value['#translate']) && $value['#translate'] === FALSE));
+      });
+
       if ($type === 'json') {
-        $items[$key] = $value['#text'];
+          $items = array();
       }
       else {
-        $items .= str_replace(
-          array('@key', '@text'),
-          array($key, $value['#text']),
-          '<item key="@key"><text type="text/html"><![CDATA[@text]]></text></item>'
-        );
+          $items = '';
       }
-    }
 
-    if ($type === 'json') {
-      return json_encode($items);
-    }
-    else {
-      return '<items>' . $items . '</items>';
-    }
+      foreach ($data as $key => $value) {
+          // when we are in multiple source files mode,
+          // for proper translation return,
+          // we need to keep keys like this: "13][title][0][value"
+          // they need to start with the job item ID.
+          // for this, for each item, we flatten the whole job (instead of job item)
+          // and then remove the other job items from the flattened data, so that the file will contain
+          // only the current job item.
+          if ($keepOnlyThisIndex !== null) {
+              if (strpos($key, $keepOnlyThisIndex . $data_service::TMGMT_ARRAY_DELIMITER) !== 0) {
+                  continue;
+              }
+          }
+
+          if ($type === 'json') {
+              $items[$key] = $value['#text'];
+          }
+          else {
+              $items .= str_replace(
+                  array('@key', '@text'),
+                  array($key, $value['#text']),
+                  '<item key="@key"><text type="text/html"><![CDATA[@text]]></text></item>'
+              );
+          }
+      }
+
+      if ($type === 'json') {
+          return json_encode($items);
+      }
+      else {
+          return '<items>' . $items . '</items>';
+      }
   }
 
   /**
@@ -442,8 +489,47 @@ class MwTranslator extends TranslatorPluginBase implements ContainerFactoryPlugi
       return FALSE;
     }
 
-    $response = $this->parseTranslationData($response);
+    // parse translations as json
+      if (is_object($response) || is_array($response)) {
+          $response = $this->parseTranslationData($response);
+      } else {
+          // parse translation result as binary or xml
+          $tmpFile = tmpfile();
+          fwrite($tmpFile, $response);
+          $metaData = stream_get_meta_data($tmpFile);
 
+          $zip = new ZipArchive();
+          // try loading as ZIP file. if not, we will assume the translation content is XML.
+          // for our API to return ZIP, the API client must be configured not to return single files.
+          if ($zip->open($metaData['uri']) !== true) {
+              $response = $this->parseTranslationData($response);
+          } else {
+              // As long as statIndex() does not return false keep iterating
+              for ($idx = 0; $zipFile = $zip->statIndex($idx); $idx++) {
+                  $fileName = basename($zipFile['name']);
+                  $extension = pathinfo($fileName, PATHINFO_EXTENSION);
+
+                  if (!is_dir($zipFile['name'])
+                      && in_array($extension, array('xml', 'json'))) {
+                      // file contents
+                      $contents = $zip->getFromIndex($idx);
+
+                      if ($contents) {
+                          $response = $this->parseTranslationData($contents);
+                          if ($response) {
+                              $job->addMessage('The translation for file ' . $fileName . 'has been received.');
+                              $job->addTranslatedData($response);
+                          }
+                      }
+                  }
+              }
+              $zip->close();
+
+              return TRUE;
+          }
+      }
+
+      // json or xml translation content will flow here. ZIP will return above.
     if (!$response) {
       $job->rejected(
         'Could not parse translation received from MotaWord. Contact us at info@motaword.com',
@@ -463,7 +549,7 @@ class MwTranslator extends TranslatorPluginBase implements ContainerFactoryPlugi
   /**
    * Parses received translation from MW and returns unflatted data.
    *
-   * @param object $data JSON array
+   * @param array|string $data JSON array
    * @param string $type Content type: json, xml
    *
    * @return array            Unflatted data.
@@ -473,7 +559,9 @@ class MwTranslator extends TranslatorPluginBase implements ContainerFactoryPlugi
     $data_service = \Drupal::service('tmgmt.data');
 
     if ($type === 'json') {
-      // JSON is already coming json_decoded.
+        if (is_string($data)) {
+            $data = json_decode($data, true);
+        }
       $items = $data;
       $data = array();
 
